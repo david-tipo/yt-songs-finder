@@ -4,22 +4,20 @@ A fast, async Python program that reads song names from a text file and outputs 
 
 ## Installation
 
-### Using uv (Recommended)
+### Installing uv
 
-```bash
-uv sync
-```
+uv is used to manage dependencies and run scripts. On most platforms:
 
-### Using pip
+On Windows (PowerShell):
 
-```bash
-pip install yt-dlp pydantic
+```powershell
+PowerShell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 ## Usage
 
 ```bash
-uv run song_finder.py <input_file> [-o OUTPUT_FILE]
+uv run --script song_finder.py <input_file> [-o OUTPUT_FILE]
 ```
 
 ### Arguments
