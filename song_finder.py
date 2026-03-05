@@ -39,14 +39,14 @@ async def get_song_id(song_name: str) -> str | None:
             return info["entries"][0]["id"]
 
 
-def load_song_names(input_file: str) -> list[str]:
+def load_song_names(input_file: Path) -> list[str]:
     """Load and validate song names from input file.
 
     Raises:
         FileNotFoundError: if the input file doesn't exist
         ValueError: if the file can't be read or contains no songs
     """
-    if not Path(input_file).exists():
+    if not input_file.exists():
         raise FileNotFoundError(f"Input file '{input_file}' not found")
 
     try:
@@ -82,7 +82,7 @@ async def process_songs(song_names: list[str]) -> list[SongResult]:
     ]
 
 
-def save_to_csv(results: list[SongResult], output_file: str) -> None:
+def save_to_csv(results: list[SongResult], output_file: Path) -> None:
     try:
         with open(output_file, "w", newline="", encoding="utf-8") as f:
             # derive headers from model field names
@@ -99,7 +99,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find YouTube URLs for songs from a text file"
     )
-    parser.add_argument("input_file", help="Text file with song names (one per line)")
+    parser.add_argument("input_file", type=Path,help="Text file with song names (one per line)")
     parser.add_argument(
         "-o",
         "--output",
