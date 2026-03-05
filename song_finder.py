@@ -3,6 +3,7 @@
 # dependencies = [
 #   "pydantic",
 #   "yt-dlp",
+#   "tqdm",
 # ]
 # ///
 
@@ -13,6 +14,7 @@ import argparse
 from pathlib import Path
 
 from pydantic import BaseModel
+from tqdm.asyncio import tqdm
 
 
 DLP_PARAMS = {
@@ -68,8 +70,10 @@ async def process_songs(song_names: list[str]) -> list[SongResult]:
     Raises:
         Exception: propagates any error from get_song_id
     """
-    song_ids = await asyncio.gather(
-        *[get_song_id(song_name) for song_name in song_names]
+    song_ids = await tqdm.gather(
+        *[get_song_id(song_name) for song_name in song_names],
+        desc="Fetching songs",
+        total=len(song_names),
     )
 
     return [
@@ -100,7 +104,9 @@ async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find YouTube URLs for songs from a text file"
     )
-    parser.add_argument("input_file", type=Path,help="Text file with song names (one per line)")
+    parser.add_argument(
+        "input_file", type=Path, help="Text file with song names (one per line)"
+    )
     parser.add_argument(
         "-o",
         "--output",
