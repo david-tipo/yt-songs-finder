@@ -104,6 +104,7 @@ async def main() -> None:
     parser.add_argument(
         "-o",
         "--output",
+        type=Path,
         default="songs_urls.csv",
         help="CSV output file (default: songs_urls.csv)",
     )
