@@ -81,7 +81,7 @@ async def process_songs(song_names: list[str]) -> list[SongResult]:
             song_name=song_name,
             youtube_url=f"https://www.youtube.com/watch?v={song_id}"
             if song_id
-            else None
+            else None,
         )
         for song_name, song_id in zip(song_names, song_ids)
     ]
@@ -100,10 +100,12 @@ def save_to_csv(results: list[SongResult], output_file: Path) -> None:
         raise IOError(f"Error writing output file: {e}")
 
 
-async def download_audio(url: str, download_dir: Path) -> None:
+async def download_audio(url: str, download_dir: Path, quality: str) -> None:
     """Download audio from a YouTube URL as MP3 into the given directory.
 
-    This runs in a thread to avoid blocking the event loop. """
+    ``quality`` is the preferred bitrate passed to ffmpeg (e.g. "192" or "320").
+
+    This runs in a thread to avoid blocking the event loop."""
     params = {
         **DLP_PARAMS,
         "format": "bestaudio/best",
@@ -113,7 +115,7 @@ async def download_audio(url: str, download_dir: Path) -> None:
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": "192",
+                "preferredquality": quality,
             }
         ],
     }
@@ -124,17 +126,24 @@ async def download_audio(url: str, download_dir: Path) -> None:
 
     await asyncio.to_thread(_download)
 
-async def download_songs(songs: list[SongResult], download_dir: Path) -> None:
-    """Download all songs with valid URLs concurrently."""
+
+async def download_songs(
+    songs: list[SongResult], download_dir: Path, quality: str
+) -> None:
+    """Download all songs with valid URLs concurrently.
+
+    ``quality`` is forwarded to :func:`download_audio`.
+    """
     tasks = []
     for song in songs:
         if song.youtube_url:
-            tasks.append(download_audio(song.youtube_url, download_dir))
+            tasks.append(download_audio(song.youtube_url, download_dir, quality))
 
     if tasks:
         await tqdm.gather(*tasks, desc="Downloading songs", total=len(tasks))
     else:
         print("No valid YouTube URLs found to download.")
+
 
 async def main() -> None:
     parser = argparse.ArgumentParser(
@@ -159,6 +168,14 @@ async def main() -> None:
         help="Folder where .mp3 files will be saved (if omitted, no download)",
     )
 
+    parser.add_argument(
+        "-q",
+        "--quality",
+        type=str,
+        default="320",
+        help="Preferred MP3 quality in kbps (passed to ffmpeg, e.g. 128, 192, 320).",
+    )
+
     args = parser.parse_args()
 
     song_names = load_song_names(args.input_file)
@@ -166,11 +183,10 @@ async def main() -> None:
 
     results = await process_songs(song_names)
     save_to_csv(results, args.output)
-    
+
     # Ensure download directory exists
     args.download_dir.mkdir(parents=True, exist_ok=True)
-    await download_songs(results, args.download_dir)
-    
+    await download_songs(results, args.download_dir, args.quality)
 
 
 if __name__ == "__main__":
