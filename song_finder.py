@@ -100,6 +100,33 @@ def save_to_csv(results: list[SongResult], output_file: Path) -> None:
         raise IOError(f"Error writing output file: {e}")
 
 
+async def download_audio(url: str, download_dir: Path) -> None:
+    """Download audio from a YouTube URL as MP3 into the given directory.
+
+    This runs in a thread to avoid blocking the event loop. """
+    params = {
+        **DLP_PARAMS,
+        "format": "bestaudio/best",
+        "outtmpl": str(download_dir / "%(title)s.%(ext)s"),
+        "noplaylist": True,
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+    }
+    # ensure directory exists
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    def _download():
+        with yt_dlp.YoutubeDL(params) as ydl:
+            ydl.download([url])
+
+    await asyncio.to_thread(_download)
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find YouTube URLs for songs from a text file"
@@ -115,6 +142,14 @@ async def main() -> None:
         help="CSV output file (default: songs_urls.csv)",
     )
 
+    parser.add_argument(
+        "-d",
+        "--download-dir",
+        type=Path,
+        default=None,
+        help="Folder where .mp3 files will be saved (if omitted, no download)",
+    )
+
     args = parser.parse_args()
 
     song_names = load_song_names(args.input_file)
@@ -122,6 +157,21 @@ async def main() -> None:
 
     results = await process_songs(song_names)
     save_to_csv(results, args.output)
+
+    # if user requested downloads, queue them
+    if args.download_dir:
+        # filter out not found results
+        valid_urls = [r.youtube_url for r in results if r.youtube_url != "Not found"]
+        if valid_urls:
+            print(f"Downloading {len(valid_urls)} audio file(s) to {args.download_dir}...")
+            await tqdm.gather(
+                *[download_audio(url, args.download_dir) for url in valid_urls],
+                desc="Downloading MP3s",
+                total=len(valid_urls),
+            )
+            print("Downloads complete.")
+        else:
+            print("No valid URLs to download.")
 
 
 if __name__ == "__main__":
