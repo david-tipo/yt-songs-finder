@@ -27,7 +27,7 @@ DLP_PARAMS = {
 
 class SongResult(BaseModel):
     song_name: str
-    youtube_url: str
+    youtube_url: str | None = None
 
 
 async def get_song_id(song_name: str) -> str | None:
@@ -81,7 +81,7 @@ async def process_songs(song_names: list[str]) -> list[SongResult]:
             song_name=song_name,
             youtube_url=f"https://www.youtube.com/watch?v={song_id}"
             if song_id
-            else "Not found",
+            else None
         )
         for song_name, song_id in zip(song_names, song_ids)
     ]
@@ -117,8 +117,6 @@ async def download_audio(url: str, download_dir: Path) -> None:
             }
         ],
     }
-    # ensure directory exists
-    download_dir.mkdir(parents=True, exist_ok=True)
 
     def _download():
         with yt_dlp.YoutubeDL(params) as ydl:
@@ -126,6 +124,17 @@ async def download_audio(url: str, download_dir: Path) -> None:
 
     await asyncio.to_thread(_download)
 
+async def download_songs(songs: list[SongResult], download_dir: Path) -> None:
+    """Download all songs with valid URLs concurrently."""
+    tasks = []
+    for song in songs:
+        if song.youtube_url:
+            tasks.append(download_audio(song.youtube_url, download_dir))
+
+    if tasks:
+        await tqdm.gather(*tasks, desc="Downloading songs", total=len(tasks))
+    else:
+        print("No valid YouTube URLs found to download.")
 
 async def main() -> None:
     parser = argparse.ArgumentParser(
@@ -146,7 +155,7 @@ async def main() -> None:
         "-d",
         "--download-dir",
         type=Path,
-        default=None,
+        default="downloads",
         help="Folder where .mp3 files will be saved (if omitted, no download)",
     )
 
@@ -157,21 +166,11 @@ async def main() -> None:
 
     results = await process_songs(song_names)
     save_to_csv(results, args.output)
-
-    # if user requested downloads, queue them
-    if args.download_dir:
-        # filter out not found results
-        valid_urls = [r.youtube_url for r in results if r.youtube_url != "Not found"]
-        if valid_urls:
-            print(f"Downloading {len(valid_urls)} audio file(s) to {args.download_dir}...")
-            await tqdm.gather(
-                *[download_audio(url, args.download_dir) for url in valid_urls],
-                desc="Downloading MP3s",
-                total=len(valid_urls),
-            )
-            print("Downloads complete.")
-        else:
-            print("No valid URLs to download.")
+    
+    # Ensure download directory exists
+    args.download_dir.mkdir(parents=True, exist_ok=True)
+    await download_songs(results, args.download_dir)
+    
 
 
 if __name__ == "__main__":
