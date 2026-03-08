@@ -4,6 +4,17 @@ A fast, async Python program that reads song names from a text file and outputs 
 
 ## Installation
 
+### MAC/LINUX
+
+```bash
+chmod +x setup.sh run.sh
+./setup.sh && rm setup.sh
+```
+then run 
+```bash
+./run.sh
+```
+
 ### Installing uv
 
 uv is used to manage dependencies and run scripts. On most platforms:
