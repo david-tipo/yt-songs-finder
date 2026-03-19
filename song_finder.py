@@ -30,8 +30,8 @@ class SongResult(BaseModel):
     youtube_url: str | None = None
 
 
-async def get_song_id(song_name: str) -> str | None:
-    with yt_dlp.YoutubeDL(DLP_PARAMS) as ydl:
+async def get_song_id(song_name: str, auth: dict) -> str | None:
+    with yt_dlp.YoutubeDL({**DLP_PARAMS, **auth}) as ydl:
         info = await asyncio.to_thread(
             ydl.extract_info,
             f"ytsearch1:{song_name}",
@@ -64,14 +64,14 @@ def load_song_names(input_file: Path) -> list[str]:
     return song_names
 
 
-async def process_songs(song_names: list[str]) -> list[SongResult]:
+async def process_songs(song_names: list[str], auth: dict) -> list[SongResult]:
     """Fetch song IDs concurrently and return list of SongResult models.
 
     Raises:
         Exception: propagates any error from get_song_id
     """
     song_ids = await tqdm.gather(
-        *[get_song_id(song_name) for song_name in song_names],
+        *[get_song_id(song_name, auth) for song_name in song_names],
         desc="Fetching songs",
         total=len(song_names),
     )
@@ -100,7 +100,7 @@ def save_to_csv(results: list[SongResult], output_file: Path) -> None:
         raise IOError(f"Error writing output file: {e}")
 
 
-async def download_audio(url: str, download_dir: Path, quality: str) -> None:
+async def download_audio(url: str, download_dir: Path, quality: str, auth: dict) -> None:
     """Download audio from a YouTube URL as MP3 into the given directory.
 
     ``quality`` is the preferred bitrate passed to ffmpeg (e.g. "192" or "320").
@@ -108,6 +108,7 @@ async def download_audio(url: str, download_dir: Path, quality: str) -> None:
     This runs in a thread to avoid blocking the event loop."""
     params = {
         **DLP_PARAMS,
+        **auth,
         "format": "bestaudio/best",
         "outtmpl": str(download_dir / "%(title)s.%(ext)s"),
         "noplaylist": True,
@@ -128,7 +129,7 @@ async def download_audio(url: str, download_dir: Path, quality: str) -> None:
 
 
 async def download_songs(
-    songs: list[SongResult], download_dir: Path, quality: str
+    songs: list[SongResult], download_dir: Path, quality: str, auth: dict
 ) -> None:
     """Download all songs with valid URLs concurrently.
 
@@ -137,7 +138,7 @@ async def download_songs(
     tasks = []
     for song in songs:
         if song.youtube_url:
-            tasks.append(download_audio(song.youtube_url, download_dir, quality))
+            tasks.append(download_audio(song.youtube_url, download_dir, quality, auth))
 
     if tasks:
         await tqdm.gather(*tasks, desc="Downloading songs", total=len(tasks))
@@ -176,17 +177,39 @@ async def main() -> None:
         help="Preferred MP3 quality in kbps (passed to ffmpeg, e.g. 128, 192, 320).",
     )
 
+    parser.add_argument(
+        "-u",
+        "--username",
+        type=str,
+        default=None,
+        help="YouTube account username (e-mail) for authentication.",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--password",
+        type=str,
+        default=None,
+        help="YouTube account password for authentication.",
+    )
+
     args = parser.parse_args()
+
+    auth: dict = {}
+    if args.username:
+        auth["username"] = args.username
+    if args.password:
+        auth["password"] = args.password
 
     song_names = load_song_names(args.input_file)
     print(f"Found {len(song_names)} song(s) to process...")
 
-    results = await process_songs(song_names)
+    results = await process_songs(song_names, auth)
     save_to_csv(results, args.output)
 
     # Ensure download directory exists
     args.download_dir.mkdir(parents=True, exist_ok=True)
-    await download_songs(results, args.download_dir, args.quality)
+    await download_songs(results, args.download_dir, args.quality, auth)
 
 
 if __name__ == "__main__":
